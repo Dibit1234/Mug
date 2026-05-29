@@ -40,10 +40,47 @@ Corporate password wordlists built from what you know about the target — compa
 
 ## Installation
 
+### System-wide command (recommended — Kali / Debian / Ubuntu)
+
 ```bash
 git clone https://github.com/Dibit1234/Mug
 cd Mug
-chmod +x mug.py
+chmod +x install.sh
+./install.sh
+```
+
+The install script symlinks `mug.py` to `/usr/local/bin/mug` so `git pull` inside the repo automatically updates the command.
+
+```bash
+mug -i
+mug --help
+```
+
+To uninstall:
+```bash
+sudo rm /usr/local/bin/mug
+```
+
+### pip (editable install — any platform)
+
+```bash
+git clone https://github.com/Dibit1234/Mug
+cd Mug
+pip install -e .
+mug -i
+```
+
+To uninstall:
+```bash
+pip uninstall mug
+```
+
+### Manual (no install)
+
+```bash
+git clone https://github.com/Dibit1234/Mug
+cd Mug
+python3 mug.py -i
 ```
 
 ---

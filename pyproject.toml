@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "mug"
+version = "1.0.0"
+description = "Company-targeted password wordlist generator for penetration testing"
+readme = "README.md"
+requires-python = ">=3.6"
+license = {text = "MIT"}
+
+[project.scripts]
+mug = "mug:main"
+
+[tool.setuptools]
+py-modules = ["mug"]
