@@ -123,8 +123,11 @@ python3 mug.py --company AcmeCorp --domain acme.com --ceo "John Smith" --emails 
 # Separate mode — each word individually, no combining
 python3 mug.py --company AcmeCorp -c 5 --separate --min 8 --max 16
 
-# Append to existing wordlist (script-friendly)
-python3 mug.py --company AcmeCorp -c 2 -q --append -o master_list.txt
+# Merge with an existing wordlist — adds new passwords, dedupes, writes to master.txt
+python3 mug.py --company AcmeCorp -c 2 --merge existing.txt -o master.txt
+
+# In-place merge — no -o means write back to the same file
+python3 mug.py --company "Acme Finance" --tech SAP -c 3 --merge master.txt
 ```
 
 ---
@@ -174,7 +177,9 @@ generation options:
   --max INT                Maximum password length (default: 20)
   --separate               Treat each word individually — no combining
   --emails                 Generate corporate email patterns (requires --domain)
-  --append                 Append to output file instead of overwriting
+  --merge FILE             Existing wordlist to merge with — reads FILE, combines
+                           with generated output, dedupes, writes result to -o
+                           (or back to FILE in-place if -o is not given)
   -q, --quiet              Suppress banner and progress — outputs only count + filename
   -o FILE                  Output file (default: mug_wordlist.txt)
 ```

@@ -272,7 +272,9 @@ def collect_profile() -> Tuple[dict, dict]:
     if profile.get('domain'):
         emails = _ask_yn("Generate corporate email address patterns?")
 
-    append = _ask_yn("Append to existing wordlist instead of overwrite?")
+    merge_raw  = _ask("Merge with an existing wordlist",
+                      hint="path to existing .txt file, blank to skip")
+    merge_file = merge_raw.strip() if merge_raw else ""
 
     out_default = (
         (profile['company_name'] or 'mug').lower().replace(' ', '_') + '_wordlist.txt'
@@ -286,7 +288,7 @@ def collect_profile() -> Tuple[dict, dict]:
         'max_len':     max_len,
         'separate':    separate,
         'emails':      emails,
-        'append':      append,
+        'merge_file':  merge_file,
         'output_file': output_file,
     }
 
@@ -337,7 +339,7 @@ def _print_summary(profile: dict, settings: dict) -> None:
     _row("Length",       f"{settings['min_len']}-{settings['max_len']} chars")
     _row("Mode",         "Separate words only" if settings['separate'] else "Combine inputs")
     _row("Email patterns", "yes" if settings.get('emails') else "no")
-    _row("Append mode",  "yes" if settings.get('append') else "no")
+    _row("Merge file",   settings.get('merge_file', ''))
     _row("Output file",  settings['output_file'])
 
 
@@ -609,7 +611,7 @@ def _step(n: int, total: int, msg: str, count: int, quiet: bool = False) -> None
 
 def generate(profile: dict, complexity: int, min_len: int, max_len: int,
              separate: bool, output_file: str, emails: bool,
-             quiet: bool = False, append: bool = False) -> None:
+             quiet: bool = False, merge_file: str = '') -> None:
 
     categories = extract_words(profile)
 
@@ -636,9 +638,10 @@ def generate(profile: dict, complexity: int, min_len: int, max_len: int,
               f"{'Separate words only' if separate else 'Combine inputs'}")
         if emails:
             print(f"  {_bold('Email patterns')}       : enabled")
-        if append and os.path.exists(output_file):
-            print(f"  {_bold('Append mode')}          : yes  "
-                  f"{_dim('(appending to existing file)')}")
+        if merge_file:
+            exists = os.path.exists(merge_file)
+            note   = f"  {_dim('(file found)' if exists else '(file not found yet — will create)')}"
+            print(f"  {_bold('Merge file')}           : {merge_file}{note}")
 
     if complexity == 5 and not quiet:
         print(f"\n  {_yellow('[!]')} Complexity 5 (Massive) may take several minutes and produce millions of entries.")
@@ -690,33 +693,56 @@ def generate(profile: dict, complexity: int, min_len: int, max_len: int,
         email_set  = email_patterns(profile, categories)
         email_list = sorted(email_set)
 
-    # Write output
-    mode = 'a' if (append and os.path.exists(output_file)) else 'w'
-    with open(output_file, mode, encoding='utf-8', errors='ignore') as f:
-        if mode == 'a':
-            f.write('\n')
-        for word in filtered:
+    # Resolve output destination:
+    #   --merge given, no -o  → write back to merge file (in-place)
+    #   --merge given, -o set → write combined result to -o
+    #   no --merge            → write to -o (or default filename)
+    if merge_file and not output_file:
+        dest = merge_file
+    else:
+        dest = output_file or 'mug_wordlist.txt'
+
+    # Read existing wordlist if merging
+    existing: List[str] = []
+    if merge_file and os.path.exists(merge_file):
+        with open(merge_file, 'r', encoding='utf-8', errors='ignore') as f:
+            existing = [ln.rstrip('\n') for ln in f
+                        if ln.strip() and not ln.startswith('#')]
+
+    # Combine: existing first, then new-only entries (deduped)
+    seen: Set[str] = set(existing)
+    new_only = [w for w in filtered if w not in seen]
+    combined = existing + new_only
+
+    with open(dest, 'w', encoding='utf-8', errors='ignore') as f:
+        for word in combined:
             f.write(word + '\n')
         if email_list:
             f.write('\n# --- email patterns ---\n')
             for e in email_list:
                 f.write(e + '\n')
 
-    size_kb  = os.path.getsize(output_file) / 1024
+    size_kb  = os.path.getsize(dest) / 1024
     size_str = f"{size_kb / 1024:.1f} MB" if size_kb > 1024 else f"{size_kb:.1f} KB"
-    verb     = "appended" if mode == 'a' else "saved"
+
+    if merge_file:
+        verb = f"merged  ({len(existing):,} existing + {len(new_only):,} new)"
+    else:
+        verb = "saved"
 
     if quiet:
-        print(f"{len(filtered):,}  {output_file}")
+        print(f"{len(combined):,}  {dest}")
     else:
         print()
-        print(f"  {_green('[+]')} {_bold('Passwords generated')}  : {_cyan(f'{len(filtered):,}')}")
+        print(f"  {_green('[+]')} {_bold('New passwords added')}  : {_cyan(f'{len(new_only):,}')}")
+        if merge_file:
+            print(f"  {_green('[+]')} {_bold('Total in file')}       : {_cyan(f'{len(combined):,}')}")
         if email_list:
             print(f"  {_green('[+]')} {_bold('Email patterns')}      : {_cyan(str(len(email_list)))}")
         print(f"  {_green('[+]')} {_bold('Output file')}         : "
-              f"{_yellow(output_file)}  {_dim(f'({size_str}, {verb})')}")
-        print(f"\n  {_dim('hashcat:  hashcat -a 0 -m <hash-type> hashes.txt ' + output_file)}")
-        print(f"  {_dim('hydra:    hydra -L users.txt -P ' + output_file + ' <target> ssh')}")
+              f"{_yellow(dest)}  {_dim(f'({size_str}, {verb})')}")
+        print(f"\n  {_dim('hashcat:  hashcat -a 0 -m <hash-type> hashes.txt ' + dest)}")
+        print(f"  {_dim('hydra:    hydra -L users.txt -P ' + dest + ' <target> ssh')}")
 
 
 # ---------------------------------------------------------------------------
@@ -781,12 +807,12 @@ def main():
                      help='Treat each word independently — no combining')
     gen.add_argument('--emails', action='store_true',
                      help='Generate corporate email patterns (requires --domain)')
-    gen.add_argument('--append', action='store_true',
-                     help='Append to output file instead of overwriting')
+    gen.add_argument('--merge', metavar='FILE',
+                     help='Existing wordlist to merge with — reads it, combines with generated output, dedupes, writes result to -o (or back to FILE if -o not given)')
     gen.add_argument('-q', '--quiet', action='store_true',
                      help='Suppress banner and verbose output (script-friendly)')
-    gen.add_argument('-o', '--output', default='mug_wordlist.txt', metavar='FILE',
-                     help='Output file (default: mug_wordlist.txt)')
+    gen.add_argument('-o', '--output', default=None, metavar='FILE',
+                     help='Output file (default: mug_wordlist.txt, or merge file if --merge given)')
 
     args = parser.parse_args()
 
@@ -815,7 +841,7 @@ def main():
             output_file=settings['output_file'],
             emails=settings['emails'],
             quiet=False,
-            append=settings['append'],
+            merge_file=settings['merge_file'],
         )
 
     elif args.company:
@@ -854,7 +880,7 @@ def main():
             output_file=args.output,
             emails=args.emails,
             quiet=args.quiet,
-            append=args.append,
+            merge_file=args.merge or '',
         )
 
     else:
